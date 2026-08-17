@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FLY-000 — specimen chamber</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --chamber:#0B0E11;
+    --glass:#3A4550;
+    --amber:#FFB000;
+    --tag:#C9A66B;
+    --ink:#E8E6E0;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    background:var(--chamber);
+    overflow:hidden;
+    font-family:'JetBrains Mono', monospace;
+    color:var(--ink);
+  }
+  #scene{position:fixed; inset:0;}
+
+  .hud{
+    position:fixed;
+    pointer-events:none;
+    z-index:10;
+  }
+  .tag{
+    top:20px; left:20px;
+    border:1px solid var(--tag);
+    padding:10px 16px;
+    background:rgba(11,14,17,0.55);
+    backdrop-filter:blur(2px);
+  }
+  .tag .id{
+    font-family:'Big Shoulders Display', sans-serif;
+    font-weight:800;
+    font-size:28px;
+    letter-spacing:0.04em;
+    color:var(--tag);
+    line-height:1;
+  }
+  .tag .sub{
+    margin-top:4px;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--ink);
+    opacity:0.6;
+  }
+
+  .scope{
+    bottom:20px; left:20px;
+    border:1px solid var(--glass);
+    background:rgba(11,14,17,0.55);
+    backdrop-filter:blur(2px);
+    padding:10px 12px 8px;
+  }
+  .scope .label{
+    font-size:10px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--amber);
+    opacity:0.85;
+    margin-bottom:6px;
+  }
+
+  .controls{
+    bottom:20px; right:20px;
+    text-align:right;
+    font-size:11px;
+    letter-spacing:0.04em;
+    color:var(--ink);
+    opacity:0.55;
+    line-height:1.6;
+  }
+
+  .top-right{
+    top:20px; right:20px;
+    text-align:right;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--ink);
+    opacity:0.4;
+    line-height:1.6;
+  }
+
+  @media (max-width:600px){
+    .tag .id{ font-size:20px; }
+    .controls{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="scene"></div>
+
+<div class="hud tag">
+  <div class="id">FLY&#8202;-&#8202;000 [neural]</div>
+  <div class="sub">specimen chamber &middot; live flight sim</div>
+</div>
+
+<div class="hud scope">
+  <div class="label">excitation trace</div>
+  <canvas id="trace" width="220" height="60"></canvas>
+</div>
+
+<div class="hud controls">
+  drag to orbit<br/>
+  scroll to zoom
+</div>
+
+<div class="hud top-right">
+  connectome-inspired &middot; toy model
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- scene setup ----------
+const container = document.getElementById('scene');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0E11);
+scene.fog = new THREE.Fog(0x0B0E11, 6, 16);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(3.2, 2.4, 3.6);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 2;
+controls.maxDistance = 9;
+controls.target.set(0, 0.75, 0);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- lighting ----------
+scene.add(new THREE.AmbientLight(0x3a4550, 1.1));
+const key = new THREE.DirectionalLight(0xffe9c7, 1.1);
+key.position.set(3, 5, 2);
+scene.add(key);
+const rim = new THREE.PointLight(0xffb000, 0.6, 8);
+rim.position.set(-2, 1, -2);
+scene.add(rim);
+
+// ---------- chamber (glass box) ----------
+const BOX = 1.5; // half-extent of the flying volume
+const boxGeo = new THREE.BoxGeometry(BOX*2, BOX*2, BOX*2);
+const edges = new THREE.EdgesGeometry(boxGeo);
+const boxLines = new THREE.LineSegments(
+  edges,
+  new THREE.LineBasicMaterial({ color: 0x3A4550, transparent:true, opacity:0.9 })
+);
+boxLines.position.y = BOX;
+scene.add(boxLines);
+
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0x0B0E11,
+  transparent: true,
+  opacity: 0.05,
+  roughness: 0.1,
+  metalness: 0,
+  side: THREE.DoubleSide
+});
+const glassBox = new THREE.Mesh(boxGeo, glassMat);
+glassBox.position.y = BOX;
+scene.add(glassBox);
+
+// floor grid under the chamber for spatial reference
+const grid = new THREE.GridHelper(6, 24, 0x3A4550, 0x1c2126);
+grid.position.y = 0;
+scene.add(grid);
+
+// ---------- the fly ----------
+const fly = new THREE.Group();
+
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.35, metalness: 0.4 });
+const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), bodyMat);
+thorax.scale.set(1, 0.9, 1.2);
+fly.add(thorax);
+
+const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), bodyMat);
+abdomen.scale.set(0.9, 0.85, 1.4);
+abdomen.position.z = 0.16;
+fly.add(abdomen);
+
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0x991010, emissiveIntensity: 0.6 });
+const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), eyeMat);
+eyeL.position.set(0.06, 0.02, -0.08);
+fly.add(eyeL);
+const eyeR = eyeL.clone();
+eyeR.position.x = -0.06;
+fly.add(eyeR);
+
+const wingMat = new THREE.MeshStandardMaterial({
+  color: 0xdfe7ea, transparent:true, opacity:0.35,
+  side: THREE.DoubleSide, roughness: 0.2
+});
+const wingGeo = new THREE.PlaneGeometry(0.16, 0.08);
+const wingL = new THREE.Mesh(wingGeo, wingMat);
+wingL.position.set(0.08, 0.04, 0);
+const wingR = wingL.clone();
+wingR.position.x = -0.08;
+fly.add(wingL, wingR);
+
+fly.position.set(0, BOX, 0);
+scene.add(fly);
+
+// ---------- toy "brain" driving the fly ----------
+// Same shape of logic as brain.js: a leaky accumulator reacting to
+// how close the fly is to a wall, plus a wandering heading.
+const brainState = { excitation: 0.3, heading: new THREE.Vector3(1,0.3,0.5).normalize() };
+const traceHistory = [];
+const MAX_TRACE = 220;
+
+function brainStep(dt){
+  const p = fly.position;
+  const localP = new THREE.Vector3(p.x, p.y - BOX, p.z);
+  const distToWall = BOX - Math.max(Math.abs(localP.x), Math.abs(localP.y), Math.abs(localP.z));
+  const closeness = THREE.MathUtils.clamp(1 - distToWall / BOX, 0, 1);
+
+  // leaky integration, same spirit as brain.js's excitation accumulator
+  brainState.excitation = brainState.excitation * 0.92 + closeness * 0.6 + (Math.random()-0.5)*0.05;
+  brainState.excitation = THREE.MathUtils.clamp(brainState.excitation, 0, 1);
+
+  // steer away from walls when excitation (startle) is high, else wander
+  if (brainState.excitation > 0.55) {
+    const away = localP.clone().normalize().multiplyScalar(-1);
+    brainState.heading.lerp(away, 0.15).normalize();
+  } else if (Math.random() < 0.02) {
+    brainState.heading.lerp(new THREE.Vector3(
+      (Math.random()-0.5), (Math.random()-0.5)*0.6, (Math.random()-0.5)
+    ), 0.6).normalize();
+  }
+
+  const speed = 0.9;
+  fly.position.addScaledVector(brainState.heading, speed * dt);
+  fly.position.x = THREE.MathUtils.clamp(fly.position.x, -BOX+0.1, BOX-0.1);
+  fly.position.y = THREE.MathUtils.clamp(fly.position.y, 0.1, BOX*2-0.1);
+  fly.position.z = THREE.MathUtils.clamp(fly.position.z, -BOX+0.1, BOX-0.1);
+
+  const dir = brainState.heading;
+  const yaw = Math.atan2(dir.x, dir.z);
+  const pitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
+  fly.rotation.set(0, yaw, 0);
+  fly.rotateX(-pitch);
+
+  traceHistory.push(brainState.excitation);
+  if (traceHistory.length > MAX_TRACE) traceHistory.shift();
+}
+
+// ---------- oscilloscope readout ----------
+const traceCanvas = document.getElementById('trace');
+const tctx = traceCanvas.getContext('2d');
+function drawTrace(){
+  const w = traceCanvas.width, h = traceCanvas.height;
+  tctx.clearRect(0,0,w,h);
+  tctx.strokeStyle = 'rgba(58,69,80,0.5)';
+  tctx.lineWidth = 1;
+  tctx.beginPath();
+  tctx.moveTo(0, h/2); tctx.lineTo(w, h/2);
+  tctx.stroke();
+
+  tctx.strokeStyle = '#FFB000';
+  tctx.lineWidth = 1.5;
+  tctx.beginPath();
+  traceHistory.forEach((v, i) => {
+    const x = (i / MAX_TRACE) * w;
+    const y = h - v * h;
+    if (i === 0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
+  });
+  tctx.stroke();
+}
+
+// ---------- animation loop ----------
+const clock = new THREE.Clock();
+let wingPhase = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  brainStep(dt);
+
+  wingPhase += dt * 45;
+  const flap = Math.sin(wingPhase) * 0.9;
+  wingL.rotation.y = flap;
+  wingR.rotation.y = -flap;
+
+  drawTrace();
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
