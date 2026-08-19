@@ -18,232 +18,170 @@
             padding: 0;
             overflow: hidden;
             background-color: #111116;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            user-select: none;
+            font-family: Arial, sans-serif;
+            color: #ffffff;
         }
         #canvas-container {
             width: 100vw;
             height: 100vh;
         }
-        /* Overlay UI Card */
-        #ui-panel {
+        #ui-overlay {
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(20, 20, 30, 0.75);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 16px 20px;
-            border-radius: 12px;
-            color: #ffffff;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            z-index: 100;
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            min-width: 180px;
-            z-index: 10;
-        }
-        .ui-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-        }
-        .ui-label {
-            color: #aaaaaa;
-            font-weight: 500;
-        }
-        .ui-value {
-            font-weight: bold;
-            color: #00ffcc;
-        }
-        #feed-btn {
-            background: linear-gradient(135deg, #00b4db, #0083b0);
-            border: none;
-            color: white;
-            padding: 10px 16px;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
             border-radius: 8px;
-            font-weight: bold;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(0, 180, 219, 0.3);
+            font-weight: bold;
         }
-        #feed-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 180, 219, 0.5);
+        button:hover {
+            background-color: #218838;
         }
-        #feed-btn:active {
-            transform: translateY(0);
+        #loading-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <!-- UI Overlay for Mood and Feeding -->
-    <div id="ui-panel">
-        <div class="ui-row">
-            <span class="ui-label">Mood:</span>
-            <span id="mood-display" class="ui-value">Happy 🪰</span>
-        </div>
-        <button id="feed-btn">🍒 Feed Fly</button>
+    <div id="ui-overlay">
+        <div>Mood: <span id="mood-text">Neutral</span></div>
+        <button id="feed-btn">Feed</button>
     </div>
 
+    <div id="loading-text">Loading Model...</div>
     <div id="canvas-container"></div>
 
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // Scene Setup
+        // Scene
         const container = document.getElementById('canvas-container');
+        const loadingText = document.getElementById('loading-text');
+        const moodText = document.getElementById('mood-text');
+        const feedBtn = document.getElementById('feed-btn');
+
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x111116);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 8, 38);
+        camera.position.set(0, 5, 25);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
         container.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambientLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
         dirLight.position.set(10, 20, 15);
         scene.add(dirLight);
 
-        // Enlarged Glass Enclosure Box (Doubled size: 24x24x24)
-        const boxSize = 24;
+        // Glass Box Enclosure
+        const boxSize = 20;
         const boxGeo = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
         const boxMat = new THREE.MeshPhysicalMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.2,
+            opacity: 0.15,
             roughness: 0.1,
             transmission: 0.9,
-            thickness: 1.2,
             side: THREE.DoubleSide
         });
         const glassBox = new THREE.Mesh(boxGeo, boxMat);
         scene.add(glassBox);
 
-        // Box Wireframe Edges
         const edges = new THREE.EdgesGeometry(boxGeo);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2 });
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
         const wireframe = new THREE.LineSegments(edges, lineMat);
         scene.add(wireframe);
 
-        // Fly Group Hierarchy
-        const flyGroup = new THREE.Group();
-        const flyBody = new THREE.Group();
-        flyGroup.add(flyBody);
-        scene.add(flyGroup);
+        // Model & Mixer
+        let mixer;
+        let modelGroup = new THREE.Group();
+        scene.add(modelGroup);
 
-        // Fly Materials
-        const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.8 });
-        const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0xaa1100, roughness: 0.2, metalness: 0.1 });
-        const wingMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0xffffff, transmission: 0.9, opacity: 0.85, transparent: true, roughness: 0.1, side: THREE.DoubleSide
-        });
+        // Load original GLTF file (encodes URL special characters correctly)
+        const loader = new GLTFLoader();
+        const modelPath = 'fly%230000/final_rig/scene.gltf';
 
-        // Thorax
-        const thoraxGeo = new THREE.SphereGeometry(1.2, 16, 16);
-        thoraxGeo.scale(1, 0.9, 1.3);
-        flyBody.add(new THREE.Mesh(thoraxGeo, bodyMaterial));
+        loader.load(
+            modelPath,
+            (gltf) => {
+                loadingText.style.display = 'none';
+                const model = gltf.scene;
+                modelGroup.add(model);
 
-        // Abdomen
-        const abdomenGeo = new THREE.SphereGeometry(1.6, 16, 16);
-        abdomenGeo.scale(1, 0.9, 1.8);
-        const abdomen = new THREE.Mesh(abdomenGeo, bodyMaterial);
-        abdomen.position.set(0, -0.2, -2.4);
-        flyBody.add(abdomen);
+                // Auto-fit loaded model scale inside enclosure
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                if (maxDim > 0) {
+                    const scale = 6 / maxDim;
+                    model.scale.set(scale, scale, scale);
+                }
 
-        // Head & Eyes
-        const headGeo = new THREE.SphereGeometry(0.9, 16, 16);
-        headGeo.scale(1.1, 0.9, 0.9);
-        const head = new THREE.Mesh(headGeo, bodyMaterial);
-        head.position.set(0, 0.2, 1.5);
-        flyBody.add(head);
+                if (gltf.animations && gltf.animations.length) {
+                    mixer = new THREE.AnimationMixer(model);
+                    gltf.animations.forEach((clip) => {
+                        mixer.clipAction(clip).play();
+                    });
+                }
+            },
+            undefined,
+            (error) => {
+                loadingText.innerText = 'Failed to load model.';
+                console.error(error);
+            }
+        );
 
-        const eyeGeo = new THREE.SphereGeometry(0.5, 16, 16);
-        eyeGeo.scale(0.8, 1.2, 1);
-        const leftEye = new THREE.Mesh(eyeGeo, eyeMaterial);
-        leftEye.position.set(0.6, 0.3, 1.7);
-        leftEye.rotation.y = 0.3;
-        flyBody.add(leftEye);
+        // State / Feed Logic
+        let moodValue = 50;
 
-        const rightEye = new THREE.Mesh(eyeGeo, eyeMaterial);
-        rightEye.position.set(-0.6, 0.3, 1.7);
-        rightEye.rotation.y = -0.3;
-        flyBody.add(rightEye);
-
-        // Resized Wings (Shorter length to completely prevent wall collision)
-        const leftWingShape = new THREE.Shape();
-        leftWingShape.moveTo(0, 0);
-        leftWingShape.quadraticCurveTo(1.2, 1.0, 2.8, 0.5);
-        leftWingShape.quadraticCurveTo(3.2, 0, 2.6, -0.4);
-        leftWingShape.quadraticCurveTo(1.2, -0.5, 0, 0);
-
-        const leftWingGroup = new THREE.Group();
-        leftWingGroup.position.set(0.8, 0.8, 0.2);
-        leftWingGroup.add(new THREE.Mesh(new THREE.ShapeGeometry(leftWingShape), wingMaterial));
-        flyBody.add(leftWingGroup);
-
-        const rightWingShape = new THREE.Shape();
-        rightWingShape.moveTo(0, 0);
-        rightWingShape.quadraticCurveTo(-1.2, 1.0, -2.8, 0.5);
-        rightWingShape.quadraticCurveTo(-3.2, 0, -2.6, -0.4);
-        rightWingShape.quadraticCurveTo(-1.2, -0.5, 0, 0);
-
-        const rightWingGroup = new THREE.Group();
-        rightWingGroup.position.set(-0.8, 0.8, 0.2);
-        rightWingGroup.add(new THREE.Mesh(new THREE.ShapeGeometry(rightWingShape), wingMaterial));
-        flyBody.add(rightWingGroup);
-
-        // Interactive Mood Logic
-        const moods = ['Happy 🪰', 'Excited 🎉', 'Well-Fed 😋', 'Energetic ⚡', 'Playful 🎈'];
-        const moodDisplay = document.getElementById('mood-display');
-        const feedBtn = document.getElementById('feed-btn');
+        function updateMoodDisplay() {
+            if (moodValue > 75) moodText.innerText = 'Ecstatic';
+            else if (moodValue > 40) moodText.innerText = 'Content';
+            else moodText.innerText = 'Hungry';
+        }
 
         feedBtn.addEventListener('click', () => {
-            const randomMood = moods[Math.floor(Math.random() * moods.length)];
-            moodDisplay.innerText = randomMood;
-            
-            // Temporary bounce effect on feed
-            flyGroup.position.y += 1.5;
+            moodValue = Math.min(100, moodValue + 25);
+            updateMoodDisplay();
         });
 
         const clock = new THREE.Clock();
 
-        // Animation Loop: Fully Constrained Within 24x24x24 Box
         function animate() {
             requestAnimationFrame(animate);
 
-            const elapsedTime = clock.getElapsedTime();
-
-            // Wing Flapping
-            const flapAngle = Math.sin(elapsedTime * 45) * 0.4;
-            leftWingGroup.rotation.z = flapAngle;
-            rightWingGroup.rotation.z = -flapAngle;
-
-            // Safe padding calculation (Box Half-Width minus Fly Body and Wing Radius)
-            const flyRadius = 4.5;
-            const maxTravel = (boxSize / 2) - flyRadius;
-
-            flyGroup.position.x = Math.sin(elapsedTime * 1.2) * maxTravel;
-            flyGroup.position.y = Math.sin(elapsedTime * 2.2) * (maxTravel * 0.6);
-            flyGroup.position.z = Math.cos(elapsedTime * 1.2) * maxTravel;
-
-            // Orientations aligned to internal trajectory
-            flyGroup.rotation.y = elapsedTime * 1.2 + Math.PI / 2;
-            flyGroup.rotation.z = Math.sin(elapsedTime * 2.2) * 0.12;
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
 
             controls.update();
             renderer.render(scene, camera);
@@ -251,7 +189,6 @@
 
         animate();
 
-        // Responsive handling
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
