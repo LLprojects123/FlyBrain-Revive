@@ -85,7 +85,7 @@
         const wingMaterial = new THREE.MeshPhysicalMaterial({
             color: 0xffffff,
             transmission: 0.9,
-            opacity: 1,
+            opacity: 0.85,
             transparent: true,
             roughness: 0.1,
             ior: 1.5,
@@ -125,53 +125,59 @@
         rightEye.rotation.y = -0.3;
         flyBody.add(rightEye);
 
-        // 4. Wings (Pivoted for high-frequency flapping)
-        const wingShape = new THREE.Shape();
-        wingShape.moveTo(0, 0);
-        wingShape.quadraticCurveTo(1.5, 2, 0.8, 4.5);
-        wingShape.quadraticCurveTo(0, 5, -0.5, 4);
-        wingShape.quadraticCurveTo(-0.8, 2, 0, 0);
+        // 4. Wings Outward Projection
+        // Left Wing Geometry (Extending Outward Along +X Axis)
+        const leftWingShape = new THREE.Shape();
+        leftWingShape.moveTo(0, 0);
+        leftWingShape.quadraticCurveTo(2, 1.5, 4.5, 0.8);
+        leftWingShape.quadraticCurveTo(5, 0, 4, -0.5);
+        leftWingShape.quadraticCurveTo(2, -0.8, 0, 0);
 
-        const wingGeo = new THREE.ShapeGeometry(wingShape);
+        const leftWingGeo = new THREE.ShapeGeometry(leftWingShape);
 
-        // Left Wing Pivot
+        // Left Wing Pivot Group
         const leftWingGroup = new THREE.Group();
-        leftWingGroup.position.set(0.8, 0.8, 0);
-        const leftWingMesh = new THREE.Mesh(wingGeo, wingMaterial);
-        leftWingMesh.rotation.x = Math.PI / 2;
-        leftWingMesh.rotation.y = -Math.PI / 6;
+        leftWingGroup.position.set(0.8, 0.8, 0.2); // Positioned at upper-left thorax
+        const leftWingMesh = new THREE.Mesh(leftWingGeo, wingMaterial);
         leftWingGroup.add(leftWingMesh);
         flyBody.add(leftWingGroup);
 
-        // Right Wing Pivot
+        // Right Wing Geometry (Extending Outward Along -X Axis)
+        const rightWingShape = new THREE.Shape();
+        rightWingShape.moveTo(0, 0);
+        rightWingShape.quadraticCurveTo(-2, 1.5, -4.5, 0.8);
+        rightWingShape.quadraticCurveTo(-5, 0, -4, -0.5);
+        rightWingShape.quadraticCurveTo(-2, -0.8, 0, 0);
+
+        const rightWingGeo = new THREE.ShapeGeometry(rightWingShape);
+
+        // Right Wing Pivot Group
         const rightWingGroup = new THREE.Group();
-        rightWingGroup.position.set(-0.8, 0.8, 0);
-        const rightWingMesh = new THREE.Mesh(wingGeo, wingMaterial);
-        rightWingMesh.rotation.x = Math.PI / 2;
-        rightWingMesh.rotation.y = Math.PI / 6;
+        rightWingGroup.position.set(-0.8, 0.8, 0.2); // Positioned at upper-right thorax
+        const rightWingMesh = new THREE.Mesh(rightWingGeo, wingMaterial);
         rightWingGroup.add(rightWingMesh);
         flyBody.add(rightWingGroup);
 
         const clock = new THREE.Clock();
 
-        // Animation Loop: Handles Wing Flapping & Flight Path Dynamics
+        // Animation Loop: Wing Flapping and Flight Path
         function animate() {
             requestAnimationFrame(animate);
 
             const elapsedTime = clock.getElapsedTime();
 
-            // High-Frequency Wing Flapping (Rapid Z-rotation oscillating around pivot)
+            // High-Frequency Side-Flapping (Z-axis rotation angle sweep)
             const flapSpeed = 45;
-            const flapAngle = Math.sin(elapsedTime * flapSpeed) * 0.6;
+            const flapAngle = Math.sin(elapsedTime * flapSpeed) * 0.5;
             leftWingGroup.rotation.z = flapAngle;
             rightWingGroup.rotation.z = -flapAngle;
 
-            // Spatial Flight Trajectory Motion (Oscillating 3D Path)
+            // 3D Spatial Flight Trajectory Motion
             flyGroup.position.x = Math.sin(elapsedTime * 1.2) * 8;
             flyGroup.position.y = Math.sin(elapsedTime * 2.4) * 2 + 3;
             flyGroup.position.z = Math.cos(elapsedTime * 1.2) * 8;
 
-            // Pitch, Yaw, and Roll to Align with Motion Vector
+            // Align Body Orientation with Flight Path Trajectory
             flyGroup.rotation.y = elapsedTime * 1.2 + Math.PI / 2;
             flyGroup.rotation.z = Math.sin(elapsedTime * 2.4) * 0.15;
             flyGroup.rotation.x = Math.cos(elapsedTime * 2.4) * 0.1;
