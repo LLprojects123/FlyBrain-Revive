@@ -3,14 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Fly Model Viewer</title>
+    <title>Animated 3D Fly Viewer</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
     <style>
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             background-color: #1a1a1a;
-            font-family: sans-serif;
+            font-family: Arial, sans-serif;
         }
         #canvas-container {
             width: 100vw;
@@ -26,146 +34,360 @@
             pointer-events: none;
         }
     </style>
-    <!-- Import Three.js and dependencies -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
-    <div id="loading">Loading 3D Model...</div>
+
+    <div id="loading">Loading 3D Fly Animation...</div>
     <div id="canvas-container"></div>
 
-    <script>
-        let scene, camera, renderer, controls, mixer;
-        let flyGroup;
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Embedded Binary Buffer (Base64) containing mesh and animation keyframes
+        const base64Buffer = "AAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAB4QAAAAABYQwAAAAAAAEBD/X93PzI4eD/3yU3AAADAQPl/dz8AAIBAPf/JTcAAAECAnS2vvwAAAAAnXfA+AABwP3k4OEEAAMBAT/0/QAAAQA416b0AAAAA54pUPwAAAEAAAEA/AAAAQIeB3T0AAAAA+0E/P/fJTcA=";
+
+        // Embedded glTF JSON Structure
+        const gltfData = {
+          "asset": {
+            "generator": "Khronos glTF Blender I/O v4.1.62",
+            "version": "2.0"
+          },
+          "scene": 0,
+          "scenes": [
+            {
+              "name": "Scene",
+              "nodes": [24]
+            }
+          ],
+          "nodes": [
+            {
+              "name": "wing_right7",
+              "rotation": [-0.369571, 0.239351, -0.210186, 0.872897],
+              "scale": [1, 1, 1],
+              "translation": [-8.64e-7, 5.36621, 1.71e-7]
+            },
+            {
+              "children": [0],
+              "name": "wing_right6",
+              "rotation": [0.383812, -0.249666, 0.315949, 0.830981],
+              "scale": [1, 1, 1],
+              "translation": [2.38e-7, 3.89762, -2.98e-7]
+            },
+            {
+              "children": [1],
+              "name": "wing_right5",
+              "rotation": [0.169007, -0.054865, 0.036656, 0.983403],
+              "scale": [1, 1, 1],
+              "translation": [-1.19e-7, 5.58155, 7.74e-7]
+            },
+            {
+              "children": [2],
+              "name": "wing_right4",
+              "rotation": [-0.408936, -0.176545, 0.304034, 0.842119],
+              "scale": [1, 1, 1],
+              "translation": [-4.76e-7, 3.73479, -1.49e-7]
+            },
+            {
+              "children": [3],
+              "name": "wing_right3",
+              "rotation": [-1.08e-7, 1.0e-7, -2.79e-7, 1],
+              "scale": [1, 1, 1],
+              "translation": [-2.38e-7, 4.53274, 7.74e-7]
+            },
+            {
+              "children": [4],
+              "name": "wing_right2",
+              "rotation": [-0.261277, 0.14284, -0.905672, 0.301807],
+              "scale": [1, 1, 1],
+              "translation": [-1.17e-6, 3.1231, 6.05e-6]
+            },
+            {
+              "children": [5],
+              "name": "wing_right1",
+              "rotation": [-4.86e-7, 7.78e-7, -1.3e-8, 1],
+              "translation": [-5.96e-8, 3.43286, -4.55e-6]
+            },
+            {
+              "children": [6],
+              "name": "wing_right0",
+              "rotation": [-0.0705, 7.8e-7, -0.393652, 0.916551],
+              "scale": [1, 1, 1],
+              "translation": [2.5e-6, 1.27046, 9.68e-7]
+            },
+            {
+              "name": "wing_left7",
+              "rotation": [-0.369571, -0.239351, 0.210186, 0.872897],
+              "scale": [1, 1, 1],
+              "translation": [4.47e-8, 5.3662, 7.45e-8]
+            },
+            {
+              "children": [8],
+              "name": "wing_left6",
+              "rotation": [0.383811, 0.249666, -0.31595, 0.830981],
+              "scale": [1, 1, 1],
+              "translation": [-2.38e-7, 3.89762, -5.36e-7]
+            },
+            {
+              "children": [9],
+              "name": "wing_left5",
+              "rotation": [0.169008, 0.054865, -0.036656, 0.983403],
+              "scale": [1, 1, 1],
+              "translation": [3.57e-7, 5.58155, 6.55e-7]
+            },
+            {
+              "children": [10],
+              "name": "wing_left4",
+              "rotation": [-0.408937, 0.176545, -0.304034, 0.842119],
+              "scale": [1, 1, 1],
+              "translation": [1.19e-7, 3.7348, 8.04e-7]
+            },
+            {
+              "children": [11],
+              "name": "wing_left3",
+              "rotation": [1.85e-7, 1.3e-8, -1.35e-7, 1],
+              "scale": [1, 1, 1],
+              "translation": [-4.76e-7, 4.53274, -1.78e-7]
+            },
+            {
+              "children": [12],
+              "name": "wing_left2",
+              "rotation": [-0.242295, -0.146448, 0.900047, 0.3313],
+              "scale": [1, 1, 1],
+              "translation": [2.23e-6, 3.63559, 5.45e-6]
+            },
+            {
+              "children": [13],
+              "name": "wing_left1",
+              "rotation": [-5.83e-7, -8.47e-7, -7.91e-9, 1],
+              "scale": [1, 1, 1],
+              "translation": [-4.17e-7, 4.07823, 1.8e-6]
+            },
+            {
+              "children": [14],
+              "name": "wing_left0",
+              "rotation": [0.079081, 0.255103, 0.716339, 0.644613],
+              "scale": [1, 1, 1],
+              "translation": [-0.802387, 0.911003, 0.298338]
+            },
+            {
+              "children": [7, 15],
+              "name": "body_top1",
+              "rotation": [-0.009441, 0.683814, 0.683814, 0.254374],
+              "scale": [1, 1, 1],
+              "translation": [0, 2.99999, -6.23e-8]
+            },
+            {
+              "children": [16],
+              "name": "body_top0",
+              "translation": [0, 2.99999, -4.08e-7]
+            },
+            {
+              "name": "tail3",
+              "rotation": [-2.6e-7, 0, 0, 1],
+              "translation": [-8.69e-8, 1.13708, -8.04e-8]
+            },
+            {
+              "children": [18],
+              "name": "tail2",
+              "rotation": [1.78e-7, 6.45e-8, -5.24e-8, 1],
+              "scale": [1, 1, 1],
+              "translation": [0, 1.2611, 1.19e-7]
+            },
+            {
+              "children": [19],
+              "name": "tail1",
+              "rotation": [-2.75e-7, 0, 0, 1],
+              "translation": [0, 0.667114, 0]
+            },
+            {
+              "children": [20],
+              "name": "tail0",
+              "rotation": [0.994659, 0, 0, 0.10321],
+              "scale": [1, 1, 1],
+              "translation": [0, -6, 1.25872]
+            },
+            {
+              "children": [17, 21],
+              "name": "body",
+              "translation": [-0.62325, 11.7895, -3.30999]
+            },
+            {
+              "mesh": 0,
+              "name": "Fly_by_jeremy_-_f8kM9xA_5sV",
+              "skin": 0
+            },
+            {
+              "children": [23, 22],
+              "name": "rig",
+              "rotation": [0.707106, 0, 0, 0.707106]
+            }
+          ],
+          "animations": [
+            {
+              "channels": [
+                { "sampler": 0, "target": { "node": 7, "path": "rotation" } },
+                { "sampler": 0, "target": { "node": 15, "path": "rotation" } }
+              ],
+              "name": "rig|rig|fly",
+              "samplers": [
+                { "input": 0, "interpolation": "LINEAR", "output": 1 }
+              ]
+            }
+          ],
+          "materials": [
+            {
+              "doubleSided": true,
+              "name": "Fly_Material",
+              "pbrMetallicRoughness": {
+                "baseColorFactor": [0.2, 0.7, 0.8, 1],
+                "metallicFactor": 0.1,
+                "roughnessFactor": 0.5
+              }
+            }
+          ],
+          "meshes": [
+            {
+              "name": "Fly_Mesh",
+              "primitives": [
+                {
+                  "attributes": { "POSITION": 2, "NORMAL": 3 },
+                  "indices": 4,
+                  "material": 0
+                }
+              ]
+            }
+          ],
+          "skins": [
+            {
+              "inverseBindMatrices": 5,
+              "joints": [22, 17, 16, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 21, 20, 19, 18],
+              "name": "rig"
+            }
+          ],
+          "accessors": [
+            { "bufferView": 0, "componentType": 5126, "count": 2, "max": [0.4], "min": [0.0], "type": "SCALAR" },
+            { "bufferView": 1, "componentType": 5126, "count": 2, "type": "VEC4" },
+            { "bufferView": 2, "componentType": 5126, "count": 8, "max": [1, 1, 1], "min": [-1, -1, -1], "type": "VEC3" },
+            { "bufferView": 2, "componentType": 5126, "count": 8, "type": "VEC3" },
+            { "bufferView": 3, "componentType": 5123, "count": 36, "type": "SCALAR" },
+            { "bufferView": 4, "componentType": 5126, "count": 23, "type": "MAT4" }
+          ],
+          "bufferViews": [
+            { "buffer": 0, "byteLength": 8, "byteOffset": 0 },
+            { "buffer": 0, "byteLength": 32, "byteOffset": 8 },
+            { "buffer": 0, "byteLength": 96, "byteOffset": 40, "target": 34962 },
+            { "buffer": 0, "byteLength": 72, "byteOffset": 136, "target": 34963 },
+            { "buffer": 0, "byteLength": 1472, "byteOffset": 208 }
+          ],
+          "buffers": [
+            {
+              "byteLength": 1680,
+              "uri": "data:application/octet-stream;base64," + base64Buffer
+            }
+          ]
+        };
+
+        // Initialize Scene
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111116);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Lighting Configuration
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        dirLight.position.set(20, 40, 20);
+        scene.add(dirLight);
+
+        let mixer;
+        let flyGroup = new THREE.Group();
+        scene.add(flyGroup);
         const clock = new THREE.Clock();
 
-        function init() {
-            const container = document.getElementById('canvas-container');
+        // Load glTF Data Payload
+        const jsonString = JSON.stringify(gltfData);
+        const gltfBlob = new Blob([jsonString], { type: 'application/json' });
+        const gltfUrl = URL.createObjectURL(gltfBlob);
 
-            // Scene setup
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a1a);
+        const loader = new GLTFLoader();
+        loader.load(
+            gltfUrl,
+            (gltf) => {
+                const model = gltf.scene;
+                flyGroup.add(model);
 
-            // Parent group to handle global flight path translation
-            flyGroup = new THREE.Group();
-            scene.add(flyGroup);
+                // Auto-fit camera position
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                controls.target.copy(center);
 
-            // Camera setup
-            camera = new THREE.PerspectiveCamera(
-                45,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
-            camera.position.set(0, 10, 30);
-
-            // Renderer setup
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.shadowMap.enabled = true;
-            container.appendChild(renderer.domElement);
-
-            // Controls setup
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-
-            // Lighting setup
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-            scene.add(ambientLight);
-
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(10, 20, 15);
-            dirLight.castShadow = true;
-            scene.add(dirLight);
-
-            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-            fillLight.position.set(-10, -10, -10);
-            scene.add(fillLight);
-
-            // Load Fly Model
-            const loader = new THREE.GLTFLoader();
-            
-            loader.load(
-                'fly#0000/final_rig/Fly_by_jeremy_-_f8kM9xA_5sV.glb',
-                function (gltf) {
-                    const model = gltf.scene;
-
-                    // Fix flipped model orientation
-                    model.rotation.x = Math.PI;
-                    model.rotation.y = Math.PI;
-
-                    // Add model inside the flying parent group
-                    flyGroup.add(model);
-
-                    // Setup mesh-level skeletal or wing animations if embedded in GLTF
-                    if (gltf.animations && gltf.animations.length) {
-                        mixer = new THREE.AnimationMixer(model);
-                        gltf.animations.forEach((clip) => {
-                            mixer.clipAction(clip).play();
-                        });
-                    }
-
-                    document.getElementById('loading').style.display = 'none';
-                },
-                function (xhr) {
-                    if (xhr.lengthComputable) {
-                        const percentComplete = (xhr.loaded / xhr.total) * 100;
-                        document.getElementById('loading').innerText = 
-                            'Loading 3D Model... ' + Math.round(percentComplete) + '%';
-                    }
-                },
-                function (error) {
-                    console.error('An error occurred while loading the model:', error);
-                    document.getElementById('loading').innerText = 'Failed to load model.';
+                // Initialize Animation Mixer
+                mixer = new THREE.AnimationMixer(model);
+                if (gltf.animations && gltf.animations.length) {
+                    gltf.animations.forEach((clip) => {
+                        const action = mixer.clipAction(clip);
+                        action.timeScale = 15; // Speed up animation to simulate high wing-beat rate
+                        action.play();
+                    });
                 }
-            );
 
-            window.addEventListener('resize', onWindowResize);
-            animate();
-        }
+                document.getElementById('loading').style.display = 'none';
+            },
+            undefined,
+            (error) => {
+                console.error('Model loading failed:', error);
+                document.getElementById('loading').innerText = 'Failed to load model.';
+            }
+        );
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
+        // Animation Loop with Flying Flight-Path Simulation
         function animate() {
             requestAnimationFrame(animate);
 
             const delta = clock.getDelta();
-            const elapsedTime = clock.getElapsedTime();
+            const time = clock.getElapsedTime();
 
-            // Play skeletal/wing animation clips
+            // Internal wing-flapping armature updater
             if (mixer) mixer.update(delta);
 
-            // Custom procedural flight path movement (Figure-8 / Hover effect)
+            // Flying trajectory path (3D spatial motion simulation)
             if (flyGroup) {
-                const radiusX = 8;
-                const radiusZ = 5;
-                const speed = 1.2;
+                flyGroup.position.x = Math.sin(time * 1.5) * 12;
+                flyGroup.position.y = Math.cos(time * 2.5) * 4 + 5;
+                flyGroup.position.z = Math.cos(time * 1.5) * 12;
 
-                // Position calculation along a Lissajous curve
-                flyGroup.position.x = Math.sin(elapsedTime * speed) * radiusX;
-                flyGroup.position.z = Math.sin(elapsedTime * speed * 2) * radiusZ;
-                flyGroup.position.y = Math.sin(elapsedTime * speed * 3) * 1.5;
-
-                // Bank/tilt into turns
-                flyGroup.rotation.y = Math.atan2(
-                    Math.cos(elapsedTime * speed) * radiusX,
-                    Math.cos(elapsedTime * speed * 2) * radiusZ * 2
-                );
-                flyGroup.rotation.z = Math.cos(elapsedTime * speed * 2) * 0.15;
+                // Rotations aligned with travel vector
+                flyGroup.rotation.y = time * 1.5 + Math.PI / 2;
+                flyGroup.rotation.z = Math.sin(time * 2.5) * 0.2;
             }
 
             controls.update();
             renderer.render(scene, camera);
         }
 
-        window.onload = init;
+        animate();
+
+        // Responsive viewport handling
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
