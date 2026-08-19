@@ -13,6 +13,7 @@
     --amber:#FFB000;
     --tag:#C9A66B;
     --ink:#E8E6E0;
+    --male:#6EC6FF;
   }
   *{box-sizing:border-box;}
   html,body{
@@ -26,9 +27,10 @@
 
   .hud{
     position:fixed;
-    pointer-events:none;
     z-index:10;
   }
+  .no-pointer{ pointer-events:none; }
+
   .tag{
     top:20px; left:20px;
     border:1px solid var(--tag);
@@ -59,6 +61,7 @@
     background:rgba(11,14,17,0.55);
     backdrop-filter:blur(2px);
     padding:10px 12px 8px;
+    width:220px;
   }
   .scope .label{
     font-size:10px;
@@ -68,6 +71,57 @@
     opacity:0.85;
     margin-bottom:6px;
   }
+  .scope .mood{
+    margin-top:10px;
+    padding-top:8px;
+    border-top:1px solid var(--glass);
+    font-size:11px;
+    letter-spacing:0.06em;
+  }
+  .scope .mood .k{
+    color:var(--ink);
+    opacity:0.5;
+    text-transform:uppercase;
+    font-size:10px;
+    letter-spacing:0.12em;
+  }
+  .scope .mood .v{
+    color:var(--amber);
+    font-weight:500;
+  }
+  .scope .mood .v.male{ color:var(--male); }
+
+  .panel{
+    top:20px; right:20px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:flex-end;
+  }
+  .btn{
+    pointer-events:auto;
+    cursor:pointer;
+    background:rgba(11,14,17,0.7);
+    border:1px solid var(--tag);
+    color:var(--ink);
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    padding:9px 14px;
+    transition:background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .btn:hover{
+    background:var(--tag);
+    color:var(--chamber);
+  }
+  .btn:disabled{
+    opacity:0.35;
+    cursor:default;
+    pointer-events:none;
+  }
+  .btn.male{ border-color:var(--male); }
+  .btn.male:hover{ background:var(--male); color:var(--chamber); }
 
   .controls{
     bottom:20px; right:20px;
@@ -83,16 +137,18 @@
     top:20px; right:20px;
     text-align:right;
     font-size:10px;
-    letter-spacing:0.1em;
+    letter-spacing:0.06em;
     text-transform:uppercase;
     color:var(--ink);
     opacity:0.4;
-    line-height:1.6;
+    line-height:1.5;
   }
 
   @media (max-width:600px){
     .tag .id{ font-size:20px; }
     .controls{ display:none; }
+    .top-right{ display:none; }
+    .scope{ width:170px; }
   }
 </style>
 </head>
@@ -100,23 +156,33 @@
 
 <div id="scene"></div>
 
-<div class="hud tag">
+<div class="hud tag no-pointer">
   <div class="id">FLY&#8202;-&#8202;000 [neural]</div>
   <div class="sub">specimen chamber &middot; live flight sim</div>
 </div>
 
-<div class="hud scope">
-  <div class="label">excitation trace</div>
-  <canvas id="trace" width="220" height="60"></canvas>
+<div class="hud scope no-pointer">
+  <div class="label">Giant Fiber neuron potential (real synapse data)</div>
+  <canvas id="trace" width="196" height="52"></canvas>
+  <div class="mood">
+    <span class="k">mood &mdash; FLY-000:</span> <span class="v" id="mood-a">calm</span><br/>
+    <span class="k" id="mood-b-row" style="display:none">mood &mdash; FLY-001:</span> <span class="v male" id="mood-b"></span>
+  </div>
 </div>
 
-<div class="hud controls">
+<div class="hud panel">
+  <button class="btn" id="feed-btn">feed</button>
+  <button class="btn male" id="male-btn">add male fly</button>
+</div>
+
+<div class="hud controls no-pointer">
   drag to orbit<br/>
   scroll to zoom
 </div>
 
-<div class="hud top-right">
-  connectome-inspired &middot; toy model
+<div class="hud top-right no-pointer">
+  vision: T4a/T5a motion detection<br/>
+  (real cell IDs, modeled correlator)
 </div>
 
 <script type="importmap">
@@ -131,6 +197,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ---------- scene setup ----------
 const container = document.getElementById('scene');
@@ -191,87 +258,343 @@ const glassBox = new THREE.Mesh(boxGeo, glassMat);
 glassBox.position.y = BOX;
 scene.add(glassBox);
 
-// floor grid under the chamber for spatial reference
 const grid = new THREE.GridHelper(6, 24, 0x3A4550, 0x1c2126);
-grid.position.y = 0;
 scene.add(grid);
 
-// ---------- the fly ----------
-const fly = new THREE.Group();
+// ---------- fly model ----------
+// Real model: "Fly" by jeremy, via Poly Pizza (CC-BY 3.0) — see README for credit.
+// Loaded once, centered/scaled, then cloned per agent. Falls back to simple
+// primitive shapes if fly.glb isn't sitting next to index.html.
+const FLY_MODEL_URL = 'fly.glb';
+const FLY_TARGET_SIZE = 0.32; // world units, longest dimension after scaling
 
-const bodyMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.35, metalness: 0.4 });
-const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), bodyMat);
-thorax.scale.set(1, 0.9, 1.2);
-fly.add(thorax);
+let masterFly = null; // centered/scaled THREE.Group, ready to clone
 
-const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), bodyMat);
-abdomen.scale.set(0.9, 0.85, 1.4);
-abdomen.position.z = 0.16;
-fly.add(abdomen);
+function centerAndScale(object3d, targetSize){
+  const box = new THREE.Box3().setFromObject(object3d);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  object3d.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const wrapper = new THREE.Group();
+  wrapper.add(object3d);
+  wrapper.scale.setScalar(targetSize / maxDim);
+  return wrapper;
+}
 
-const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0x991010, emissiveIntensity: 0.6 });
-const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), eyeMat);
-eyeL.position.set(0.06, 0.02, -0.08);
-fly.add(eyeL);
-const eyeR = eyeL.clone();
-eyeR.position.x = -0.06;
-fly.add(eyeR);
+function makeFlyPrimitiveFallback({ tint = 0x14161a, eyeColor = 0xff2a2a, wingOpacity = 0.35, scale = 1 } = {}){
+  const fly = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.35, metalness: 0.4 });
+  const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), bodyMat);
+  thorax.scale.set(1, 0.9, 1.2);
+  fly.add(thorax);
+  const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), bodyMat);
+  abdomen.scale.set(0.9, 0.85, 1.4);
+  abdomen.position.z = 0.16;
+  fly.add(abdomen);
+  const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: 0.5 });
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), eyeMat);
+  eyeL.position.set(0.06, 0.02, -0.08);
+  fly.add(eyeL);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = -0.06;
+  fly.add(eyeR);
+  fly.scale.setScalar(scale);
+  return fly;
+}
 
-const wingMat = new THREE.MeshStandardMaterial({
-  color: 0xdfe7ea, transparent:true, opacity:0.35,
-  side: THREE.DoubleSide, roughness: 0.2
-});
-const wingGeo = new THREE.PlaneGeometry(0.16, 0.08);
-const wingL = new THREE.Mesh(wingGeo, wingMat);
-wingL.position.set(0.08, 0.04, 0);
-const wingR = wingL.clone();
-wingR.position.x = -0.08;
-fly.add(wingL, wingR);
+// male differentiation: recolor the eye-colored primitive(s) on a clone
+const MALE_EYE_COLOR = 0x6EC6FF;
+function tintClone(root, { eyeMaterialNames = ['F44336'], eyeColor = MALE_EYE_COLOR } = {}){
+  root.traverse(node => {
+    if (node.isMesh && node.material && eyeMaterialNames.includes(node.material.name)) {
+      node.material = node.material.clone();
+      node.material.color.set(eyeColor);
+      if ('emissive' in node.material) node.material.emissive.set(eyeColor);
+    }
+  });
+}
 
-fly.position.set(0, BOX, 0);
-scene.add(fly);
+function makeFlyInstance(isMale){
+  let mesh;
+  if (masterFly) {
+    mesh = masterFly.clone(true);
+    if (isMale) tintClone(mesh);
+  } else {
+    mesh = makeFlyPrimitiveFallback(
+      isMale
+        ? { tint: 0x1c2430, eyeColor: MALE_EYE_COLOR, wingOpacity: 0.3, scale: 0.92 }
+        : { tint: 0x14161a, eyeColor: 0xff2a2a, wingOpacity: 0.35, scale: 1 }
+    );
+  }
+  return mesh;
+}
 
-// ---------- toy "brain" driving the fly ----------
-// Same shape of logic as brain.js: a leaky accumulator reacting to
-// how close the fly is to a wall, plus a wandering heading.
-const brainState = { excitation: 0.3, heading: new THREE.Vector3(1,0.3,0.5).normalize() };
-const traceHistory = [];
-const MAX_TRACE = 220;
+// ---------- food ----------
+let food = null; // { mesh, position }
+function spawnFood(){
+  if (food) { scene.remove(food.mesh); food = null; }
+  const geo = new THREE.SphereGeometry(0.045, 12, 12);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xC9A66B, emissive: 0xC9A66B, emissiveIntensity: 0.5, roughness: 0.4
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  const pos = new THREE.Vector3(
+    (Math.random()*2-1) * (BOX-0.2),
+    BOX + (Math.random()*2-1) * (BOX-0.2),
+    (Math.random()*2-1) * (BOX-0.2)
+  );
+  mesh.position.copy(pos);
+  scene.add(mesh);
+  food = { mesh, position: pos };
+}
 
-function brainStep(dt){
-  const p = fly.position;
-  const localP = new THREE.Vector3(p.x, p.y - BOX, p.z);
-  const distToWall = BOX - Math.max(Math.abs(localP.x), Math.abs(localP.y), Math.abs(localP.z));
-  const closeness = THREE.MathUtils.clamp(1 - distToWall / BOX, 0, 1);
+// ---------- REAL fly brain: DNp01/DNp02/DNp03/DNp04 circuit ----------
+// Built from an actual FlyWire (FAFB) connections export: 8 real descending
+// neurons (root IDs below), 6 of which form a real recurrent circuit with
+// real synapse-count weights. DNp01 = the Giant Fiber (GF) neurons, which
+// really do trigger the fly's escape/jump response. DNp02 = a real premotor
+// hub neuron (highest connectivity of the set). The DNp03 pair had zero
+// direct synapses onto the others in this slice of the data, so they're
+// modeled as independent units rather than invented connections.
+//
+// Neuron index -> real root ID -> real cell type / side:
+// 0: 720575940628884496  DNp03  R  (isolated in this slice)
+// 1: 720575940604954289  DNp04  L
+// 2: 720575940619654053  DNp02  L
+// 3: 720575940627645514  DNp03  L  (isolated in this slice)
+// 4: 720575940622838154  DNp01  L  (Giant Fiber)
+// 5: 720575940629757036  DNp04  R
+// 6: 720575940632499757  DNp01  R  (Giant Fiber)
+// 7: 720575940620468718  DNp02  R
+//
+// Real edges [from, to, synapse count], summed from the raw synapse table:
+const REAL_EDGES = [
+  [2, 4, 8],  // DNp02_L -> GF_L
+  [7, 5, 7],  // DNp02_R -> DNp04_R
+  [7, 6, 5],  // DNp02_R -> GF_R
+  [2, 1, 5],  // DNp02_L -> DNp04_L
+  [5, 7, 5],  // DNp04_R -> DNp02_R
+  [4, 2, 5],  // GF_L -> DNp02_L
+];
+const GF_IDX = [4, 6];      // Giant Fiber pair -> escape/jump
+const DNP02_IDX = [2, 7];   // premotor hub pair -> sensory entry point
+const DNP04_IDX = [1, 5];   // L/R -> forward + steering drive
+const DNP03_IDX = [3, 0];   // isolated pair -> independent "restless" drive
 
-  // leaky integration, same spirit as brain.js's excitation accumulator
-  brainState.excitation = brainState.excitation * 0.92 + closeness * 0.6 + (Math.random()-0.5)*0.05;
-  brainState.excitation = THREE.MathUtils.clamp(brainState.excitation, 0, 1);
+const LEAK = 0.85;
+const THRESHOLD = 1.0;
+const SYN_SCALE = 0.055;
 
-  // steer away from walls when excitation (startle) is high, else wander
-  if (brainState.excitation > 0.55) {
-    const away = localP.clone().normalize().multiplyScalar(-1);
-    brainState.heading.lerp(away, 0.15).normalize();
-  } else if (Math.random() < 0.02) {
-    brainState.heading.lerp(new THREE.Vector3(
-      (Math.random()-0.5), (Math.random()-0.5)*0.6, (Math.random()-0.5)
-    ), 0.6).normalize();
+function makeBrain(){
+  return {
+    v: new Array(8).fill(0).map(() => Math.random() * 0.2),
+    spike: new Array(8).fill(0),
+    gfTrace: [], // oscilloscope reads real GF membrane potential
+  };
+}
+
+function stepBrain(brain, visualDrive, hunger){
+  const incoming = new Array(8).fill(0);
+  for (const [from, to, weight] of REAL_EDGES) {
+    if (brain.spike[from]) incoming[to] += weight * SYN_SCALE;
+  }
+  // external sensory drive enters at the real premotor hub (DNp02) — this
+  // is now genuine T4a/T5a-derived motion signal (see VISUAL SYSTEM below),
+  // not a raw distance-to-wall number
+  DNP02_IDX.forEach(i => { incoming[i] += visualDrive * 0.6 + hunger * 0.25; });
+  // DNp03 pair gets a small independent baseline + noise since it has no
+  // modeled synaptic input in this slice
+  DNP03_IDX.forEach(i => { incoming[i] += 0.08 + Math.random() * 0.12; });
+
+  const newSpike = new Array(8).fill(0);
+  for (let i = 0; i < 8; i++) {
+    brain.v[i] = brain.v[i] * LEAK + incoming[i] + (Math.random() - 0.5) * 0.02;
+    brain.v[i] = Math.max(0, brain.v[i]);
+    if (brain.v[i] > THRESHOLD) {
+      newSpike[i] = 1;
+      brain.v[i] -= THRESHOLD;
+    }
+  }
+  brain.spike = newSpike;
+
+  const gfPotential = (brain.v[GF_IDX[0]] + brain.v[GF_IDX[1]]) / 2;
+  brain.gfTrace.push(THREE.MathUtils.clamp(gfPotential, 0, 1));
+  if (brain.gfTrace.length > MAX_TRACE) brain.gfTrace.shift();
+
+  const jump = GF_IDX.some(i => newSpike[i] === 1);
+  const forward = DNP02_IDX.some(i => newSpike[i] === 1) || DNP04_IDX.some(i => newSpike[i] === 1);
+  const leftDrive = newSpike[DNP04_IDX[0]];
+  const rightDrive = newSpike[DNP04_IDX[1]];
+  const restless = DNP03_IDX.some(i => newSpike[i] === 1);
+
+  return { jump, forward, leftDrive, rightDrive, restless };
+}
+
+// ---------- REAL visual system: T4a / T5a motion detection ----------
+// Root IDs confirmed real via Codex export: 1,516 T4a neurons + 1,641 T5a
+// neurons (see root_ids_T4a.csv / root_ids_T5a.csv). We don't simulate all
+// 3,157 individually — they'd be doing near-duplicate computation across
+// nearby points in visual space — instead this models the actual textbook
+// computation T4/T5 are known to perform: a Hassenstein-Reichardt
+// correlator, the standard model of insect elementary motion detection.
+// T4a = ON-contrast-selective (brightening motion), T5a = OFF-contrast-
+// selective (darkening motion); both tuned to one preferred sweep direction
+// across a small array of simulated ommatidia. This feeds the SAME real
+// DNp02 entry point in the circuit above that wall-distance used to feed —
+// we don't have a confirmed monosynaptic T4a/T5a -> DNp02 connection from
+// the data (that export was too large to pull), so this is a functional
+// splice, not a verified direct synaptic pathway. Said plainly in the README.
+const EYE_RAYS = 9;
+const EYE_FOV = Math.PI * 0.85;
+const EYE_MAX_DIST = BOX * 3;
+const raycaster = new THREE.Raycaster();
+
+function makeEyes(){
+  return { prevSignal: new Array(EYE_RAYS).fill(0) };
+}
+
+function correlatorSweep(sigPrev, sigNow){
+  // classic HRC: multiply one channel's past with its neighbor's present,
+  // subtract the mirrored product -> direction-selective response
+  let sum = 0;
+  for (let i = 0; i < EYE_RAYS - 1; i++) {
+    sum += Math.max(0, sigPrev[i] * sigNow[i + 1] - sigPrev[i + 1] * sigNow[i]);
+  }
+  return sum;
+}
+
+function senseMotion(agent, otherAgent){
+  const origin = agent.mesh.position;
+  const forward = agent.heading.clone().normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  const targets = [glassBox];
+  if (food) targets.push(food.mesh);
+  if (otherAgent) targets.push(otherAgent.mesh);
+
+  const signal = new Array(EYE_RAYS);
+  for (let i = 0; i < EYE_RAYS; i++) {
+    const t = (i / (EYE_RAYS - 1)) - 0.5;
+    const dir = forward.clone().applyAxisAngle(up, t * EYE_FOV).normalize();
+    raycaster.set(origin, dir);
+    raycaster.far = EYE_MAX_DIST;
+    const hits = raycaster.intersectObjects(targets, true);
+    const dist = hits.length ? hits[0].distance : EYE_MAX_DIST;
+    signal[i] = THREE.MathUtils.clamp(1 - dist / EYE_MAX_DIST, 0, 1);
   }
 
-  const speed = 0.9;
-  fly.position.addScaledVector(brainState.heading, speed * dt);
-  fly.position.x = THREE.MathUtils.clamp(fly.position.x, -BOX+0.1, BOX-0.1);
-  fly.position.y = THREE.MathUtils.clamp(fly.position.y, 0.1, BOX*2-0.1);
-  fly.position.z = THREE.MathUtils.clamp(fly.position.z, -BOX+0.1, BOX-0.1);
+  const prev = agent.eyes.prevSignal;
+  const prevInverted = prev.map(v => 1 - v);
+  const nowInverted = signal.map(v => 1 - v);
 
-  const dir = brainState.heading;
+  const t4aActivity = correlatorSweep(prev, signal);          // ON channel
+  const t5aActivity = correlatorSweep(prevInverted, nowInverted); // OFF channel
+
+  agent.eyes.prevSignal = signal;
+
+  return { t4aActivity, t5aActivity, motionEnergy: t4aActivity + t5aActivity };
+}
+
+// ---------- fly agents ----------
+const MAX_TRACE = 220;
+
+function makeAgent(mesh, { hue = 'amber', startPos } = {}){
+  mesh.position.copy(startPos);
+  scene.add(mesh);
+  return {
+    mesh,
+    heading: new THREE.Vector3(Math.random()-0.5, (Math.random()-0.5)*0.6, Math.random()-0.5).normalize(),
+    hunger: 0.25,
+    hue,
+    brain: makeBrain(),
+    eyes: makeEyes(),
+    mood: 'calm'
+  };
+}
+
+let flyA, flyB = null;
+const agents = [];
+
+function addMale(){
+  if (flyB) return;
+  flyB = makeAgent(makeFlyInstance(true), {
+    hue: 'male',
+    startPos: new THREE.Vector3(0.6, BOX + 0.4, -0.5)
+  });
+  flyB.label = 'FLY-001';
+  agents.push(flyB);
+  document.getElementById('mood-b-row').style.display = 'inline';
+  document.getElementById('male-btn').textContent = 'male fly added';
+  document.getElementById('male-btn').disabled = true;
+}
+
+// ---------- agent step: driven by the REAL DNp circuit ----------
+function agentStep(agent, dt, otherAgent){
+  const p = agent.mesh.position;
+  const localP = new THREE.Vector3(p.x, p.y - BOX, p.z);
+
+  agent.hunger = THREE.MathUtils.clamp(agent.hunger + dt * 0.02, 0, 1);
+
+  // real T4a/T5a-derived motion signal replaces raw wall-distance as the
+  // circuit's sensory input (see senseMotion / correlatorSweep above)
+  const vision = senseMotion(agent, otherAgent);
+  const visualDrive = THREE.MathUtils.clamp(vision.motionEnergy * 3, 0, 1);
+
+  // run the real 8-neuron circuit for this tick
+  const out = stepBrain(agent.brain, visualDrive, agent.hunger);
+
+  let seekingFood = false;
+
+  if (food && agent.hunger > 0.35) {
+    const toFood = food.position.clone().sub(p);
+    const dist = toFood.length();
+    if (dist < 0.09) {
+      agent.hunger = 0;
+      scene.remove(food.mesh);
+      food = null;
+    } else {
+      agent.heading.lerp(toFood.normalize(), 0.12).normalize();
+      seekingFood = true;
+    }
+  } else if (out.jump) {
+    // Giant Fiber fired: real fly escape response is a rapid turn-and-jump
+    // away from threat. We steer hard away from whatever's close (a wall
+    // here, standing in for a visual threat) and give a speed burst below.
+    const away = localP.clone().normalize().multiplyScalar(-1);
+    agent.heading.lerp(away, 0.6).normalize();
+  } else {
+    if (out.leftDrive) agent.heading.applyAxisAngle(new THREE.Vector3(0,1,0), 0.25);
+    if (out.rightDrive) agent.heading.applyAxisAngle(new THREE.Vector3(0,1,0), -0.25);
+    if (out.restless && otherAgent && agent.hunger < 0.3) {
+      const toOther = otherAgent.mesh.position.clone().sub(p);
+      if (toOther.length() > 0.25) agent.heading.lerp(toOther.normalize(), 0.04).normalize();
+    } else if (!out.forward && Math.random() < 0.02) {
+      agent.heading.lerp(new THREE.Vector3(
+        (Math.random()-0.5), (Math.random()-0.5)*0.6, (Math.random()-0.5)
+      ), 0.6).normalize();
+    }
+  }
+
+  const speed = out.jump ? 2.2 : 0.9;
+  agent.mesh.position.addScaledVector(agent.heading, speed * dt);
+  agent.mesh.position.x = THREE.MathUtils.clamp(agent.mesh.position.x, -BOX+0.1, BOX-0.1);
+  agent.mesh.position.y = THREE.MathUtils.clamp(agent.mesh.position.y, 0.1, BOX*2-0.1);
+  agent.mesh.position.z = THREE.MathUtils.clamp(agent.mesh.position.z, -BOX+0.1, BOX-0.1);
+
+  const dir = agent.heading;
   const yaw = Math.atan2(dir.x, dir.z);
   const pitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
-  fly.rotation.set(0, yaw, 0);
-  fly.rotateX(-pitch);
+  agent.mesh.rotation.set(0, yaw, 0);
+  agent.mesh.rotateX(-pitch);
 
-  traceHistory.push(brainState.excitation);
-  if (traceHistory.length > MAX_TRACE) traceHistory.shift();
+  // mood readout, driven by which real neuron group is actually active
+  if (out.jump) agent.mood = 'startled (GF firing)';
+  else if (agent.hunger > 0.6) agent.mood = 'hungry';
+  else if (seekingFood) agent.mood = 'foraging';
+  else if (out.restless) agent.mood = otherAgent ? 'courting' : 'restless';
+  else if (out.forward) agent.mood = 'active';
+  else agent.mood = 'calm';
 }
 
 // ---------- oscilloscope readout ----------
@@ -286,16 +609,53 @@ function drawTrace(){
   tctx.moveTo(0, h/2); tctx.lineTo(w, h/2);
   tctx.stroke();
 
-  tctx.strokeStyle = '#FFB000';
-  tctx.lineWidth = 1.5;
-  tctx.beginPath();
-  traceHistory.forEach((v, i) => {
-    const x = (i / MAX_TRACE) * w;
-    const y = h - v * h;
-    if (i === 0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
-  });
-  tctx.stroke();
+  const drawOne = (trace, color) => {
+    tctx.strokeStyle = color;
+    tctx.lineWidth = 1.5;
+    tctx.beginPath();
+    trace.forEach((v, i) => {
+      const x = (i / MAX_TRACE) * w;
+      const y = h - v * h;
+      if (i === 0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
+    });
+    tctx.stroke();
+  };
+  drawOne(flyA.brain.gfTrace, '#FFB000');
+  if (flyB) drawOne(flyB.brain.gfTrace, '#6EC6FF');
 }
+
+// ---------- UI wiring ----------
+document.getElementById('feed-btn').addEventListener('click', spawnFood);
+document.getElementById('male-btn').addEventListener('click', addMale);
+
+const moodAEl = document.getElementById('mood-a');
+const moodBEl = document.getElementById('mood-b');
+
+// ---------- startup: load the fly model, then spawn FLY-000 and go ----------
+function startChamber(){
+  flyA = makeAgent(makeFlyInstance(false), { hue: 'amber', startPos: new THREE.Vector3(0, BOX, 0) });
+  flyA.label = 'FLY-000';
+  agents.push(flyA);
+  animate();
+}
+
+const loader = new GLTFLoader();
+let started = false;
+loader.load(
+  FLY_MODEL_URL,
+  (gltf) => {
+    masterFly = centerAndScale(gltf.scene, FLY_TARGET_SIZE);
+    if (!started) { started = true; startChamber(); }
+  },
+  undefined,
+  (err) => {
+    console.warn('fly.glb failed to load, using fallback shapes:', err);
+    if (!started) { started = true; startChamber(); }
+  }
+);
+// safety net: don't hang forever if fly.glb is missing and the loader
+// never fires an error (e.g. wrong relative path returning a 404 page)
+setTimeout(() => { if (!started) { started = true; startChamber(); } }, 4000);
 
 // ---------- animation loop ----------
 const clock = new THREE.Clock();
@@ -305,18 +665,28 @@ function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  brainStep(dt);
+  agentStep(flyA, dt, flyB);
+  if (flyB) agentStep(flyB, dt, flyA);
 
-  wingPhase += dt * 45;
-  const flap = Math.sin(wingPhase) * 0.9;
-  wingL.rotation.y = flap;
-  wingR.rotation.y = -flap;
+  // wing-buzz wobble: the model isn't rigged with separate wings, so we
+  // fake the vibration with a fast subtle roll layered on top of the
+  // heading rotation agentStep already set this frame
+  wingPhase += dt * 55;
+  const buzz = Math.sin(wingPhase) * 0.05;
+  agents.forEach(a => { a.mesh.rotateZ(buzz); });
+
+  if (food) {
+    food.mesh.rotation.y += dt * 2;
+    food.mesh.position.y = food.position.y + Math.sin(clock.elapsedTime * 2) * 0.02;
+  }
+
+  moodAEl.textContent = flyA.mood;
+  if (flyB) moodBEl.textContent = flyB.mood;
 
   drawTrace();
   controls.update();
   renderer.render(scene, camera);
 }
-animate();
 </script>
 </body>
 </html>
